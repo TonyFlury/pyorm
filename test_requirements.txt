@@ -1,0 +1,4 @@
+flake8
+tox
+sphinx-rtd-theme
+click>=6.6
