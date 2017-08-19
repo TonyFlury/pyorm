@@ -71,7 +71,6 @@ setup(
         #        'Programming Language :: Python :: 3.4',
 
         'Programming Language :: Python :: 3.5',
-
     ],
 
     # What does your project relate to?
@@ -112,6 +111,7 @@ setup(
     # "scripts" keyword. Entry points provide cross-platform support and allow
     # pip to create the appropriate form of executable for the target platform.
     entry_points={
+        'console_scripts': ['pyorm=pyorm._cli._main:main'],
     },
     test_suite='tests',
     tests_require=['flake8']
