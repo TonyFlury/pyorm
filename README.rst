@@ -18,6 +18,8 @@ pyORM : Flexible Django like Python ORM
 Introduction
 ------------
 
+**Do NOT USE - still under development/test**
+
 A Python ORM with Django like Syntax
 
 
