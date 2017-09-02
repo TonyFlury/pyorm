@@ -2,8 +2,13 @@
 Getting Started
 ===============
 
+
+Your first pyorm Application
+============================
+
 After :doc:`Installing pyorm<Installation>` of pyorm, there are a number of steps required
 to make your pyOrm application : You will need to execute these steps for every pyOrm application you start.
+
 
 Step 1 - Initialise the Pyorm directory Structure
 -------------------------------------------------
@@ -33,32 +38,37 @@ Answering all the questions with their defaults will create a directory structur
     A sample **models.py** file is provided to give an example of how models definitions are formatted
  - The **migrations** directory is initially empty, but will eventually contain :term`migration` scripts
 
-Step 2 - Create your application models
----------------------------------------
+Step 2 - Your first model
+-------------------------
 
-In your favourite editor create the relevants models in the models directory, these models files can be called anything you want, so long as they exist in your **models** directory.
+In your favourite code editor and open models.py
 
-Step 3 - Create the migration scripts
---------------------------------------
+.. literalinclude::  ../pyorm/_cli/initialisation_samples/models.py
 
-Once your models are ready you can create the relevant :term:`migration scripts<migration script>` :
+In pyorm, a :term:`Model` is equivalent to a table in your RDBMS (see :doc:`relationship to RDBMS` for details). The initial Sample model has two _fields a name field and a birthdate _fields, which are defined as a 'CharField' and a 'DateField' respectively. There are many other :term:`field <_fields>` type available to use, and there are a number of options available to customize how those _fields behave. More details available on within :docs:`_fields`.
 
-.. code-block:: bash
+With the exception of inheriting from Model, and having a number of attributes which are defined as _fields, the ``Person`` class is just like any other Python class. You can extend the python class as much as you wish, adding new methods and attributes as required, but for the moment lets leave the model as it is.
 
-    pyorm migration create
-
-This will create one a :term:`migration script` within the **migrations** directory.
-
-Step 4 - Apply the migration scripts
-------------------------------------
-
-Assuming your application works after :doc:`testing` you can apply the migrations to your production database:
+To see what this model can do - lets test the model within the Python Console
 
 .. code-block:: bash
 
-    pyorm migration apply
+    $ python -m pyorm.console .
 
-Your production database is now ready to roll
+This intructs the Python console to start up with the pyorm environment, and use the settings file within the current directory. There are other options available : see :doc:`Pyorm Console` for details).
+
+By default the pyorm console uses a temporary database so you can use the defualt options to test changes to your model without overwriting your live data.
+
+After the Python console starts up, you will see a normal python prompt, which all your expected python functionality.
+
+Lets test your model in the python console
+
+.. code-block:: python-con
+
+    >>> from models.models import Person
+    >>> from _datetime import date
+    >>> john = Person(name='John Lennon', date=date(year=2012, month=1, day=17))
+    >>> paul = Person(name='Paul McCartney', date=date(year=2012, month=1, day=17))
 
 
 

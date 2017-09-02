@@ -1,20 +1,10 @@
 # /usr/bin/env python
-#
-# DBmodels : Test Suite for model
-# 
-# <Module Summary statement>
-#
-
-__version__ = "0.1"
-__author__ = 'Tony Flury : anthony.flury@btinternet.com'
-__created__ = '23 Sep 2014'
-
 """
 # DBmodels : Implementation of model
 
-Summary : 
+Summary :
     <summary of module/class being tested>
-Use Case : 
+Use Case :
     As a <actor> I want <outcome> So that <justification>
 
 Testable Statements :
@@ -22,132 +12,41 @@ Testable Statements :
     ....
 """
 
+import pyorm.core.exceptions as exceptions
+from pyorm.core.settingsmanager import SettingsManager
 from ._core import _Field, _Mapping, _ModelMetaClass
+from ..engine.common import ImportEngine
 
-from pyorm.core.exceptions import InvalidField, UnknownCondition
-
-class ManyToMany(_Mapping, _Field, ):
-    pass
-
-
-class QuerySet(object):
-    conditions = ["eq", "lt", "gt", "lte", "gte", "contains", "startswith", "endswith", "like", "ilike", "in"]
-
-    def __init__(self, model):
-        """
-        A generalised query object for a given object - allows the construction of filters
-        """
-        self._model = model
-        self._clause = []
-
-        self._eq = lambda field, value: self._cmp(field, value, "=")
-        self._lt = lambda field, value: self._cmp(field, value, "<")
-        self._gt = lambda field, value: self._cmp(field, value, ">")
-        self._lte = lambda field, value: self._cmp(field, value, "<=")
-        self._gte = lambda field, value: self._cmp(field, value, ">=")
-        self._contains = lambda field, value: self._cmp(field, "'%" + repr(value) + "%'", "LIKE")
-        self._startswith = lambda field, value: self._cmp(field, repr(value) + "%'", "LIKE")
-        self._endswith = lambda field, value: self._cmp(field, "'%" + repr(value) + "%'", "LIKE")
-        self._in = lambda field, value: self._cmp(field, value, "IN")
-
-    def _cmp(self, field, value, cmp_op):
-        db_field = self._model.db_fields()[field].db_column()
-
-        # Compare to NULL/None correctly
-        if repr(value) is None and cmp_op == "=":
-            return "{0} is NULL"
-
-        # If the value is another query set, then make sure it is enclosed in braces
-        if isinstance(value, QuerySet):
-            return "{0} {1} ({2})".format(db_field, cmp_op, repr(value))
-
-        return "{0} {1} {2}".format(db_field, cmp_op, repr(value))
-
-    def _construct_clause(self, criteria):
-        for clause, value in criteria.iteritems():
-            clause_split = clause.split("__")
-            field = clause_split[0]
-            condition = clause_split[1] if len(clause_split) == 2 else "eq"
-
-            if field not in self._model.db_fields():
-                raise InvalidField("Invalid field {0}".format(field))
-
-            if condition not in QuerySet.conditions:
-                raise UnknownCondition("Query Set condition {0} unkown".format(condition))
-            yield self.__getattribute__("_" + condition)(field, value)
-
-    def all(self):
-        """ Lazy evaluation of a SELECT * from table"""
-        table = self._model.__table__
-        self._clause = {"True": "True"}
-
-    def get(self, **kwargs):
-        """Build query, based on the kwargs - Immediate execution"""
-        self._clause = " AND ".join([clause for clause in self._construct_clause(**kwargs)])
-
-    def filter(self, **kwargs):
-        """Filters the data in a query set - lazy evaluation"""
-        self._clause = " AND ".join([clause for clause in self._construct_clause(**kwargs)])
-
-    def exclude(self, **kwargs):
-        self._clause = "NOT (" + " AND ".join([clause for clause in self._construct_clause(**kwargs)]) + ")"
-
-    def __repr__(self):
-        return "SELECT {cols} FROM {table} WHERE {clause}".format(
-            cols=",".join([meta.db_column for col, meta in self._model.db_fields().iteritems()]),
-            table=self._model.__table__,
-            clause=self._clause
-        )
+__version__ = "0.1"
+__author__ = 'Tony Flury : anthony.flury@btinternet.com'
+__created__ = '23 Sep 2014'
 
 
-class Model(object):
-    __metaclass__ = _ModelMetaClass
-
-    def __new__(cls, *args, **kwargs):
-        cls.objects = QuerySet(cls)
-        return super(Model, cls).type(cls, *args, **kwargs)
+class Model( metaclass=_ModelMetaClass):
 
     def __init__(self, **kwargs):
         super(Model, self).__init__()
 
-        # Set defined fields as instance attributes - use kwargs to set values or use defaults
-        for name, field in Model.db_fields().iteritems():
-            if field.is_mutable and (name in kwargs):
-                raise AttributeError("Cannot set value of AutoField '{name}'".format(name=name))
-            super(Model, self).__setattr__(name, kwargs.get(name, field.default))
-        self._save_cmd = "INSERT"
+        # Need to create every field
+        for field_name, field_definition in self.db_fields():
+            default = field_definition.default() if field_definition.callable_default else field_definition.default
 
-    @classmethod
-    def instance_from_query(cls, cls_name, **kwargs):
-        instance = Model._models[cls_name](**kwargs)
-        instance._save_cmd = "UPDATE"
-        return instance
+            value = default if (field_name not in kwargs) else kwargs[field_name]
 
-    @classmethod
-    def _create_table_sql(cls):
-        """Returns the creation sql for this model"""
-        # ToDo - Doesn't deal with dependencies between models
-        sql = "CREATE TABLE IF NOT EXISTS {table} ".format(table=cls.__table__)
-        cols = [inst._create_table_sql() for name, inst in cls.db_fields().iteritems()]
-        return sql + "(\n\t" + ",\n\t".join(cols) + ")"
+            setattr(self, field_name, value)
 
-    @classmethod
-    def _create_index_sql(cls):
-        """Returns a set of strings representing the indexes for this model"""
-        cols = [inst._create_index_sql() for name, inst in cls.db_fields().iteritems()]
-        return "\n".join(cols)
+        super().__setattr__('__dirty', True)
 
-    @classmethod
-    def primary_name(cls):
+    def primary_name(self):
         """Returns the primary key for this instance - this is a _Field instance - not a raw value
 
         :rtype : _FieldABC instance (i.e. a subclass of _FieldABC or _Field
         """
-        return cls._primary
+        return self.__class__._primary
 
     @classmethod
     def primary_field(cls):
-        return cls.db_fields()[cls._primary]
+        return cls._primary
 
     @classmethod
     def dependencies(cls):
@@ -155,29 +54,92 @@ class Model(object):
         """
         return cls._dependencies
 
-    @classmethod
-    def objects(cls):
-        """do a basic query against the database
-
-          Will return a query object - with some key methods
-        """
-        return cls.objects
-
     def __setattr__(self, key, value):
 
-        # Set the value - including extra validation if this is a database field
-        if key not in Model.db_fields():
-            super(Model, self).__setattr__(key, value)
+        field = self.db_field_by_name(key)
 
-        meta = Model.db_fields()[key]
-        super(Model, self).__setattr__(key, meta._check_value(new_value=value,
-                                                              old_value=super(Model, self).__getattribute__(key)))
+        if not field:
+            super().__setattr__(key, value)
+            return
+
+        # If a field hasn't been set yet then the attribute will still be the class attr
+        if not field.is_mutable() and not super().__getattribute__(key) is field:
+            raise AttributeError('Cannot change value of immutable field {} once set'.format(key))
+
+        try:
+            field.verify_value(value)
+        except AttributeError as exc:
+            raise exc from None
+        except Exception as exc:
+            raise AttributeError('Unknown error while validating value for {} field : {}'.format(self.name, str(exc)))
+
+        super().__setattr__(key, value)
+        super().__setattr__('__dirty', True)
 
     @classmethod
     def db_fields(cls):
-        return cls._db_fields
+        """Iterate around the field defines and captured
+
+          returns a 2-tuple of (name, field instance) for every field
+        """
+        yield from ((field_name,instance) for field_name,instance in cls._db_fields.items())
 
     @classmethod
-    def which_attr(cls, db_column):
+    def db_field_by_name(cls_, name:str):
+        return cls_._db_fields.get(name, None)
+
+    @classmethod
+    def db_column_to_attr_name(cls_, db_column:str):
         """Look up to translate a specific db_column name into the attribute name"""
-        return cls._columns_to_attr[db_column].name
+        if db_column in cls_._columns_to_attr:
+            return cls_._columns_to_attr[db_column].name
+        else:
+            return None
+
+    @classmethod
+    def _db_data_to_model_attrs(cls_, db_data=None):
+        """Convert a dictionary from an database engine into a set of attributes for a model class constructor """
+        if not db_data:
+            return {}
+
+        attrs = {}
+        for column_name, value in db_data.items():
+            attr_name = cls_.db_column_to_attr_name(db_column=column_name)
+            if attr_name is None:
+                raise exceptions.ColumnError('Unexpected column from database: column \'{}\' is not known on the \'{}\' model'.format(column_name, cls_.__name__)) from None
+            attrs[attr_name] = value
+        return attrs
+
+    @classmethod
+    def _check_field_names(cls_, field_names):
+        for name in field_names:
+            if cls_.db_field_by_name(name=name) is None:
+                raise AttributeError('Unknown field name: \'{}\' is not a field on \'{}\' model'.format(name, cls_.__name__))
+
+
+    # Todo - detach get/get_or_create from database
+
+    @classmethod
+    def get(cls_,**kwargs):
+        """Get a single object using the engine.get method"""
+        try:
+            cls_._check_field_names(name for name in kwargs.keys())
+        except AttributeError:
+            raise
+
+        if len(kwargs) != 1:
+            raise AttributeError('Incorrect arguments to \'get\': need only one field/value argument pair.') from None
+        data = engine.get(model=cls_, **kwargs)
+        attrs = cls_._db_data_to_model_attrs(db_data=data)
+        return cls_(**attrs)
+
+    @classmethod
+    def get_or_create(cls_,**kwargs):
+        try:
+            return cls_.get(**kwargs)
+        except exceptions.DoesNotExist:
+            return cls_()
+
+    @classmethod
+    def table_name(cls):
+        return cls._table_name

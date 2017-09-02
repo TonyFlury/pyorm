@@ -59,7 +59,7 @@ FLAGS = TypeVar('FLAGS', int, None)
 class RegexValidator(ValidatorBase):
     def __init__(self, regex: REGEX = '.*',
                  exception_class: Type[Exception] = pyOrmVaidationError,
-                 message:str = 'Invalid',
+                 message:str = 'Invalid value',
                  inverse_match: bool = False,
                  flags: FLAGS = None):
         """A Deffered validator to compare a string to a regular expression

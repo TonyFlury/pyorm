@@ -16,10 +16,17 @@ Test Series :
     0xx - cli help
     100 - validators & other core functionality
     200 - Fields & Models - basic stuff only
+        20* - Fields - validation and default values
+        25* - Models - creation & setting of attributes
+        28* - Managers - creation of default and other managers
     300 - Data base connectivity
-    400 - db Engines - translation of fields to SQL 
-    500 - Migrations
-    600 - Query Sets
+    400 - db Engines
+        410 - SQLITE
+    500 - Query Sets
+    600 - Compiler
+    700 - Managers
+    800 - Migrations
+    900 - Pyorm Console & testing capabilities
 """
 
 __version__ = "0.1"
@@ -62,7 +69,7 @@ def main( verbose, silent):
 
     this_dir = Path(__file__).parent
 
-    module_names = [py[:-3] for py in listdir(str(this_dir)) if py.endswith('.py') and py not in ['__init__.py', str(Path(__file__).name)]]
+    module_names = [py[:-3] for py in listdir(str(this_dir)) if py.endswith('.py') and py.startswith('test') and py not in ['__init__.py', str(Path(__file__).name)]]
 
     for module_name in module_names:
         the_module = importlib.import_module(module_name)

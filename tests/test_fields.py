@@ -11,10 +11,9 @@ Use Case :
 Testable Statements :
     Can I <Boolean statement>
     ....
-    
-        
+
 Test Series 
-    1nn_* : test the database fields basic functionality
+    20n_* : test the database fields basic functionality
         200_* : testing field default attributes
         201_* : testing expected python_type
         202_* : Test that the default values are accepted and validated
@@ -131,9 +130,9 @@ class TestFieldDefaultAttributes(unittest.TestCase):
 # noinspection PyUnusedLocal
 def test_python_type_wrapper(index, field_type=None, expected_type=None):
     def test_python_type_method(self):
-        f = field_type()
+        f = field_type
 
-        self.assertEqual(f.python_type, expected_type)
+        self.assertEqual(f.python_type(), expected_type)
 
     return test_python_type_method
 
@@ -196,6 +195,20 @@ def test_field_default_values_wrapper(index, field_type: Type[fields._Field],
 
     return test_field_default_values_method_exception if exception else test_field_default_values_method_no_exception
 
+def load_tests(loader, tests=None, pattern=None):
+    classes = [cls for name, cls in inspect.getmembers(sys.modules[__name__],
+                                                       inspect.isclass)
+               if issubclass(cls, unittest.TestCase)]
+
+    classes.sort(key=lambda cls_: cls_.setUp.__code__.co_firstlineno)
+    suite = unittest.TestSuite()
+    for test_class in classes:
+        tests = loader.loadTestsFromTestCase(test_class)
+        suite.addTests(tests)
+    return suite
+
+
+
 @GenerateTestMethods(test_name='TestFieldDefaultValues',
                      test_method=test_field_default_values_wrapper,
                      test_cases=[
@@ -219,17 +232,17 @@ def test_field_default_values_wrapper(index, field_type: Type[fields._Field],
                         {'case_name': 'invalid_type_int',
                         'field_type': fields.BinaryField, 'default': 3,
                         'exception': {'class': AttributeError,
-                                    'regex': r'Default \'int\' value is not of expected type: expecting bytearray'}},
+                                    'regex': r'Invalid value for field  \'int\' value is not of expected type: expecting bytearray'}},
                         {'case_name': 'invalid_type_str',
                         'field_type': fields.BinaryField,
                         'default': 'Hello World',
                         'exception': {'class': AttributeError,
-                                    'regex': r'Default \'str\' value is not of expected type: expecting bytearray'}},
+                                    'regex': r'Invalid value for field  \'str\' value is not of expected type: expecting bytearray'}},
                         {'case_name': 'null_false_None_default',
                         'field_type': fields.BinaryField, 'default': None,
                         'field_attrs': {'null': False},
                         'exception': {'class': AttributeError,
-                                    'regex': r'Default value is None, but \'null\' attribute is False'}},
+                                    'regex': r'Invalid value for field : value is None, but \'null\' attribute is False'}},
 
                         # Boolean field default - no expected Errors
                         {'case_name':'None',
@@ -244,7 +257,7 @@ def test_field_default_values_wrapper(index, field_type: Type[fields._Field],
                         'field_type': fields.BooleanField, 'default': None,
                         'field_attrs': {'null': False},
                         'exception': {'class': AttributeError,
-                                    'regex': r'Default value is None, but \'null\' attribute is False'}},
+                                    'regex': r'Invalid value for field : value is None, but \'null\' attribute is False'}},
 
                         # CharField - no expected Errors
                         {'case_name': 'non_empty_string',
@@ -259,12 +272,12 @@ def test_field_default_values_wrapper(index, field_type: Type[fields._Field],
                         {'case_name': 'wrong_type',
                         'field_type': fields.CharField, 'default': 3,
                         'exception': {'class': AttributeError,
-                                'regex': r'Default \'int\' value is not of expected type: expecting str'}},
+                                'regex': r'Invalid value for field  \'int\' value is not of expected type: expecting str'}},
                         {'case_name': 'null_false_None_default',
                         'field_type': fields.CharField, 'default': None,
                         'field_attrs': {'null': False},
                         'exception': {'class': AttributeError,
-                                'regex': r'Default value is None, but \'null\' attribute is False'}},
+                                'regex': r'Invalid value for field : value is None, but \'null\' attribute is False'}},
                         {'case_name': 'too_long',
                         'field_type': fields.CharField,
                         'default': 'Hello World',
@@ -275,12 +288,12 @@ def test_field_default_values_wrapper(index, field_type: Type[fields._Field],
                         'default': '',
                         'field_attrs': {'blank': False},
                         'exception': {'class': AttributeError,
-                                'regex': r'value is blank/None but \'blank\' attribute is False'}},
+                                'regex': r'Invalid value for field : value is blank/None, but \'blank\' attribute is False'}},
                         {'case_name': 'None_blank_False',
                         'field_type': fields.CharField, 'default': None,
                         'field_attrs': {'blank': False},
                         'exception': {'class': AttributeError,
-                                'regex': r'value is blank/None but \'blank\' attribute is False'}},
+                                'regex': r'Invalid value for field : value is blank/None, but \'blank\' attribute is False'}},
 
                         # DateField - no expected Errors
                         {'case_name': 'past date',
@@ -299,17 +312,17 @@ def test_field_default_values_wrapper(index, field_type: Type[fields._Field],
                         {'case_name': 'wrong_type_int',
                         'field_type': fields.DateField, 'default': 3,
                         'exception': {'class': AttributeError,
-                                    'regex': r'Default \'int\' value is not of expected type: expecting date'}},
+                                    'regex': r'Invalid value for field  \'int\' value is not of expected type: expecting date'}},
                         {'case_name': 'wrong_type_str_',
                         'field_type': fields.DateField,
                         'default': 'Hello World',
                         'exception': {'class': AttributeError,
-                                    'regex': r'Default \'str\' value is not of expected type: expecting date'}},
+                                    'regex': r'Invalid value for field  \'str\' value is not of expected type: expecting date'}},
                         {'case_name': 'null_false_None_default',
                         'field_type': fields.DateField, 'default': None,
                         'field_attrs': {'null': False},
                         'exception': {'class': AttributeError,
-                                    'regex': r'Default value is None, but \'null\' attribute is False'}},
+                                    'regex': r'Invalid value for field : value is None, but \'null\' attribute is False'}},
 
                         # DateTime - no expected Errors
                         {'case_name': 'past_date', 'field_type': fields.DateTimeField,
@@ -325,17 +338,17 @@ def test_field_default_values_wrapper(index, field_type: Type[fields._Field],
                         {'case_name': 'wrong_type_int',
                         'field_type': fields.DateTimeField, 'default': 3,
                         'exception': {'class': AttributeError,
-                                    'regex': r'Default \'int\' value is not of expected type: expecting datetime'}},
+                                    'regex': r'Invalid value for field  \'int\' value is not of expected type: expecting datetime'}},
                         {'case_name': 'wrong_type_str_',
                         'field_type': fields.DateTimeField,
                         'default': 'Hello World',
                         'exception': {'class': AttributeError,
-                                    'regex': r'Default \'str\' value is not of expected type: expecting datetime'}},
+                                    'regex': r'Invalid value for field  \'str\' value is not of expected type: expecting datetime'}},
                         {'case_name': 'null_false_None_default',
                         'field_type': fields.DateTimeField, 'default': None,
                         'field_attrs': {'null': False},
                         'exception': {'class': AttributeError,
-                                    'regex': r'Default value is None, but \'null\' attribute is False'}},
+                                    'regex': r'Invalid value for field : value is None, but \'null\' attribute is False'}},
 
                         # Decimal field - no expected Errors
                         {'case_name': 'Integer_Decimal', 'field_type': fields.DecimalField,
@@ -373,7 +386,7 @@ def test_field_default_values_wrapper(index, field_type: Type[fields._Field],
                         'field_type': fields.DecimalField, 'default': None,
                         'field_attrs': {'null': False},
                         'exception': {'class': AttributeError,
-                                    'regex': r'Default value is None, but \'null\' attribute is False'}, },
+                                    'regex': r'Invalid value for field : value is None, but \'null\' attribute is False'}, },
 
                         # Duration field - no expected Errors
                         {'case_name': 'positive_time_delta', 'field_type': fields.DurationField,
@@ -389,7 +402,7 @@ def test_field_default_values_wrapper(index, field_type: Type[fields._Field],
                         {'case_name': 'null_false_None_default', 'field_type': fields.DurationField, 'default': None,
                             'field_attrs': {'null': False},
                             'exception': {'class': AttributeError,
-                                    'regex': r'Default value is None, but \'null\' attribute is False'}},
+                                    'regex': r'Invalid value for field : value is None, but \'null\' attribute is False'}},
 
                         # Email Field - no errors
                         {'case_name': 'vaild_email','field_type': fields.EmailField, 'default': 'a.b@c.com'},
@@ -399,19 +412,19 @@ def test_field_default_values_wrapper(index, field_type: Type[fields._Field],
                         # Email Field - validation errors
                         {'case_name': 'invalid_email', 'field_type': fields.EmailField, 'default': 'tony@com',
                         'exception': {'class': AttributeError,
-                                    'regex': r'Invalid Default value : Invalid Email address'}},
+                                    'regex': r'Invalid value for field : Invalid Email address'}},
                         {'case_name': 'None_null_false', 'field_type': fields.EmailField, 'default': None,
                             'field_attrs': {'null': False},
                             'exception': {'class': AttributeError,
-                                    'regex': r'Default value is None, but \'null\' attribute is False'}},
+                                    'regex': r'Invalid value for field : value is None, but \'null\' attribute is False'}},
                         {'case_name': 'empty_blank_False', 'field_type': fields.EmailField, 'default': '',
                             'field_attrs': {'blank': False},
                             'exception': {'class': AttributeError,
-                                    'regex': r'value is blank/None but \'blank\' attribute is False'}},
+                                    'regex': r'Invalid value for field : value is blank/None, but \'blank\' attribute is False'}},
                         {'case_name': 'None_blank_False', 'field_type': fields.EmailField, 'default': None,
                             'field_attrs': {'blank': False},
                             'exception': {'class': AttributeError,
-                                    'regex': r'value is blank/None but \'blank\' attribute is False'}},
+                                    'regex': r'Invalid value for field : value is blank/None, but \'blank\' attribute is False'}},
 
                         #TODO test Filefield once field semantics are understood
 
@@ -428,7 +441,7 @@ def test_field_default_values_wrapper(index, field_type: Type[fields._Field],
                         {'case_name': 'honour_not_null', 'field_type': fields.FloatField, 'default': None,
                             'field_attrs':{'null':False},
                             'exception':{'class':AttributeError,
-                                         'regex':r'Default value is None, but \'null\' attribute is False'}},
+                                         'regex':r'Invalid value for field : value is None, but \'null\' attribute is False'}},
 
                         # ToDo tests for 'ForeignKey'
 
@@ -459,20 +472,6 @@ def test_field_default_values_wrapper(index, field_type: Type[fields._Field],
 class TestFieldDefaultValues(unittest.TestCase):
     def setUp(self):
         pass
-
-
-
-def load_tests(loader, tests=None, pattern=None):
-    classes = [cls for name, cls in inspect.getmembers(sys.modules[__name__],
-                                                       inspect.isclass)
-               if issubclass(cls, unittest.TestCase)]
-
-    classes.sort(key=lambda cls_: cls_.setUp.__code__.co_firstlineno)
-    suite = unittest.TestSuite()
-    for test_class in classes:
-        tests = loader.loadTestsFromTestCase(test_class)
-        suite.addTests(tests)
-    return suite
 
 # noinspection PyUnusedLocal
 @click.command()

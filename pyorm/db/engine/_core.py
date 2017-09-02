@@ -21,15 +21,12 @@ __version__ = "0.1"
 __author__ = 'Tony Flury : anthony.flury@btinternet.com'
 __created__ = '29 Jul 2017'
 
+from contextlib import contextmanager
+
 from enum import Enum
 from pyorm.db.models._core import _Field
+from pyorm.core.exceptions import ConnectionError
 
-class EngineStatus(Enum):
-    Stopped = 1 # Not started
-    Started = 2 # start has been called - not connected
-    Connected = 3 # Connected to db - but db is empty
-    Ready = 4 # Db is ready for migrations etc
-    Disconnected = 5
 
 class SqlCommands(Enum):
     SELECT = 1
@@ -39,24 +36,43 @@ class SqlCommands(Enum):
     ALTER = 5
 
 
-class EngineException(Exception):
-    pass
-
-class EngineConnectionError(Exception):
-    pass
-
-
-#TODO - Rationalise this - it feels a mess - too much too and fro - I think.
 
 class EngineCore(metaclass=ABCMeta):
 
-    _connections_per_thread = None
+    class Connection:
+        """Wrapper to the database connection to  pass through everything other than the close
+
+            The Wrapper has it's own close method which only closes the real connection if the ref count drops to zero.
+        """
+        def __init__(self, handle, engine, shared=True):
+            self._handle = handle
+            self._engine = engine
+            self._shared = shared
+
+        def __getattr__(self, item):
+            return getattr(self._handle, item)
+
+        def close(self):
+            if self._shared:
+                self._engine.__class__._ref_counts[self] -= 1
+                if self._engine.__class__._ref_counts[self] == 0:
+                    del self._engine.__class__._ref_counts[self]
+                    del self._engine.__class__._connections_per_thread[self._engine._db_path][
+                        self._engine._thread_id]
+                    return self._handle.close()
+            else:
+                return self._handle.close()
+
+        @property
+        def handle(self):
+            return self._handle
+
+    _connections_per_thread = dict()
     _ref_counts = defaultdict(int)
 
     def __init__(self, db_path, shared=True, unique_per_thread=True):
         """A database agnostic base for the db specific handle managers
-        
-            
+
         :param db_path: The path to the database file
         :param shared: Whether db connections are shared or if multiple connections are used.
         :param unique_per_thread: Whether db connections are shared across threads
@@ -73,10 +89,6 @@ class EngineCore(metaclass=ABCMeta):
         self._shared = shared
         self._unique_per_thread = unique_per_thread
 
-        # As this gets populated it will be a dictionary of files - with a dictionary of threads
-        if not EngineCore._connections_per_thread:
-            EngineCore._connections_per_thread = defaultdict(self._per_file_connections)
-
         # Implement sharing across threads by ignoring the threading
         if self._shared:
             if self._unique_per_thread:
@@ -84,75 +96,54 @@ class EngineCore(metaclass=ABCMeta):
             else:
                 self._thread_id = None
 
-        self._db_handle = None
-        self.status = EngineStatus.Stopped
+        self.prepare_engine(db_path)
 
-    def _per_file_connections(self):
-        """Implement the dictionary of threads for each file"""
-        return defaultdict(self.get_db_handle)
+    @classmethod
+    @abstractmethod
+    def CreateTemporaryDb(cls, shared=True, unique_per_thread=True):
+        """Specialised class method to create a temporary db instance"""
+        raise NotImplemented
+
+    @abstractmethod
+    def prepare_engine(self, path):
+        raise NotImplemented
+
+    @abstractmethod
+    def get_connection(self, path):
+        raise NotImplemented
 
     def connect(self):
         """ Connect to the database - if not already connected
 
             Applies the various rules regarding shared connections
         """
-        # Are we already connected
-        if not self._db_handle:
-            # If there is no sharing - get a new handle
-            if not self._shared:
-                try:
-                    db_handle = self.get_db_handle()
-                except:
-                    self.status = EngineStatus.Disconnected
-                    raise
-                else:
-                    self._db_handle = db_handle
+        # If there is no sharing - get a new handle
+        if not self._shared:
+            try:
+                db_handle = self.Connection(self.get_connection(),engine=self, shared = self._shared)
+            except ConnectionError as exc:
+                raise exc from None
             else:
-                # Add a file into the connections list (if not there)
-                # Add a thread for this file - and grab a handle if required
-
-                self._db_handle = EngineCore._connections_per_thread[self._db_path][self._thread_id]
-
-        EngineCore._ref_counts[self._db_handle] += 1
-        self.status = EngineStatus.Connected
-        return self._db_handle
-
-    def disconnect(self):
-        if self._db_handle is None:
-            return False
-
-        EngineCore._ref_counts[self._db_handle] -= 1
-        if EngineCore._ref_counts[self._db_handle] == 0:
-            del EngineCore._ref_counts[self._db_handle]
-            self._db_handle = None
-            self.status = EngineStatus.Disconnected
-            return True
+                return db_handle
         else:
-            return False
+            # Add a file into the connections list (if not there)
+            # Add a thread for this file - and grab a handle if required
+            # cannot use a default dict here as this is a class variable but has a per instance default function
+            if self._db_path not in EngineCore._connections_per_thread:
+                EngineCore._connections_per_thread[self._db_path] = dict()
 
-    def is_connected(self):
-        return self.status in [EngineStatus.Connected, EngineStatus.Ready]
+            if self._thread_id not in EngineCore._connections_per_thread[self._db_path]:
+                EngineCore._connections_per_thread[self._db_path][self._thread_id] = self.Connection(self.get_connection(), engine=self)
 
-    def is_ready(self):
-        return self.status == EngineStatus.Ready
+            connection = EngineCore._connections_per_thread[self._db_path][self._thread_id]
 
-    @abstractmethod
-    def get_db_handle(self):
-        """Get a new connnection reference - as required"""
-        raise NotImplemented('\"get_db_handle\" Must be implemeneted on subclass')
+        EngineCore._ref_counts[connection] += 1
+        return connection
 
-    @abstractmethod
-    def start(self):
-        """Start the db Engine - called by the user of the engine"""
-        raise NotImplemented('\"start\" Must be implemeneted on subclass')
-
-    @property
-    def is_empty(self):
-        return self.is_empty
-
-    @property
-    def handle(self):
-        return self._db_handle
+    @classmethod
+    def open_connections(cls, db_path):
+        for thread, connections in cls._connections_per_thread.get(db_path,{}).items():
+            yield (thread, connections)
 
     @property
     def db_path(self):
@@ -161,25 +152,21 @@ class EngineCore(metaclass=ABCMeta):
     @classmethod
     def reset(cls):
         """Force Resest the core data for the db Engine - use with care"""
-        EngineCore._connections_per_thread = None
+        EngineCore._connections_per_thread = dict()
         EngineCore._ref_counts = defaultdict(int)
-
-    @abstractmethod
-    def start(self):
-        """Start the engine - connect to database - connects etc"""
-        raise NotImplemented('\"start\" Must be implemeneted on subclass')
 
     @abstractmethod
     def column_name(self, field: _Field):
         """Create the appropriate sql fragement for this field in a select statement"""
-        raise NotImplemented('\"select_field\" must be implemented on subclasse')
+        raise NotImplemented('\"select_field\" must be implemented on subclass')
 
     @abstractmethod
     def column_type(self, field: _Field):
         """Create the appropriate sql fragement for this field in a select statement"""
-        raise NotImplemented('\"select_field\" must be implemented on subclasse')
+        raise NotImplemented('\"select_field\" must be implemented on subclass')
 
     @abstractmethod
     def column_constraint(self, field: _Field):
         """Create the appropriate sql fragement for this field in a select statement"""
-        raise NotImplemented('\"select_field\" must be implemented on subclasse')
+        raise NotImplemented('\"select_field\" must be implemented on subclass')
+

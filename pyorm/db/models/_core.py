@@ -21,15 +21,17 @@ Use Case :
 
 Testable Statements :
     Can I implement a base class for data base Fields
-    Can I implement a base class for mapping fields
+    Can I implement a base class for mapping _fields
     Can I implement a base class for all my Models
 """
 import os.path
 
 from typing import TypeVar,Type, Union
 
-from pyorm.core.exceptions import pyOrmVaidationError, pyOrmFieldCoercionError
+import pyorm.core.exceptions as exceptions
 from pyorm.core.validators import ValidatorBase
+from .managers import Manager
+import collections
 
 OBJ = TypeVar('OBJ')
 VALIDATOR = Union[ValidatorBase,None]
@@ -42,8 +44,8 @@ class _Field():
                  db_column:str=None,  # The Database column for this field
                  primary:bool=False,  # Whether this field is the primary key
                  indexed:bool=False, # Whether this field is indexed
-                 python_type:Type = None, # The python type for this field
                  mutable:bool = True,
+                 model = None,          # The model that this field is attached to.
                  validator:VALIDATOR = None,
                  allow_callable_default:bool = False,
                  *args, **kwargs  # Any left over arguments - should be none
@@ -56,13 +58,13 @@ class _Field():
         :param db_column : The alternative name for this column in the database
         :param primary: True if this field is the primary key for this table
         :param indexed : True if this field is indexed
-        :param python_type: The python type for this field
         :param allow_callable_default: whether the default value can be a callable
         :param mutable: Whether this field can be changed once created
+        :param model: The model this field is based on
         :param validator: callable to implement more complex validation.
         :param args: Extra args - should be empty - included for completion
         :param kwargs: Extra Kwargs - should be empty - included for completion
-                This class is intended to be sub-classed into specific types of fields. Customisation :
+                This class is intended to be sub-classed into specific types of _fields. Customisation :
 
         Can be customised :
 
@@ -97,11 +99,11 @@ class _Field():
         self._db_column = db_column
         self._unique = unique
         self._primary = primary
-        self._python_type = python_type if python_type else object
         self._mutable = mutable
         self._validator = validator
+        self._model = model
 
-        self._default_callable = default if (allow_callable_default and callable(default)) else None
+        self._default_callable = (allow_callable_default and callable(default))
 
         # If indexed is not specified then always index primary keys.
         if indexed:
@@ -109,32 +111,50 @@ class _Field():
         else:
             self._indexed = self._primary
 
-        if self.not_null() and self.default is None:
-            raise AttributeError(
-                'Default value is None, but \'null\' attribute is False')
+        # Don' do callable default until later - when the field is constructed.
+        if not self.callable_default:
+            try:
+                self.verify_value(self.default)
+            except AttributeError as exc:
+                raise exc from None
+            except Exception as exc:
+                raise AttributeError('Unknown error while validating value for {} field : {}'.format(repr(self.name) if self.name else '', str(exc)))
 
-        if self.python_type and self._default and not self._default_callable:
-            if not isinstance(self._default, (self.python_type)):
-                try:
-                    self._default = self.convert_type(self._default, self._python_type)
-                except pyOrmFieldCoercionError as exc:
-                    if str(exc):
-                        raise AttributeError(str(exc)) from None
-                    else:
-                        raise AttributeError('Default \'{}\' value is not of expected type: expecting {}'.format(type(self._default).__name__,self._python_type.__name__)) from None
+#ToDO Record the parent Model of each field. Record aliases
+
+    def verify_value(self, value):
+
+        if self.not_null() and value is None:
+            raise AttributeError('Invalid value for field {}: value is None, but \'null\' attribute is False'.format(repr(self.name) if self.name else ''))
+
+        python_type = self.__class__.python_type()
+
+        if value and not isinstance(value, python_type):
+            try:
+                self._default = self.convert_type(value, python_type)
+            except exceptions.pyOrmFieldCoercionError as exc:
+                if str(exc):
+                    raise AttributeError('Invalid value for field {}: {}'.format(repr(self.name) if self.name else '', str(exc))) from None
+                else:
+                    raise AttributeError( 'Invalid value for field {} \'{}\' value is not of expected type: expecting {}'.format(repr(self.name) if self.name else '', type(value).__name__, python_type.__name__)) from None
 
         # Field validator method expected to handle any inputs including None and empty (string etc)
         try:
-            self.validate_value(self._default)
-        except pyOrmVaidationError as exc:
-            raise AttributeError( 'Invalid Default value : {}'.format(str(exc))) from None
+            self.validate_value(value)
+        except exceptions.pyOrmVaidationError as exc:
+            raise AttributeError(
+                'Invalid value for field {}: {}'.format(repr(self.name) if self.name else '', str(exc))) from None
 
         # External validator method expected to handle only truthy inputs - i.e. not None and not empty (string etc)
-        if self._default and self._validator:
+        if value and self._validator:
             try:
-                self._validator(self._default)
-            except pyOrmVaidationError as exc:
-                raise AttributeError('Invalid Default value : {}'.format(str(exc))) from None
+                self._validator(value)
+            except exceptions.pyOrmVaidationError as exc:
+                raise AttributeError('Invalid value for field {}: {}'.format(repr(self.name) if self.name else '', str(exc))) from None
+
+    def validate_value(self, value):
+        """Null version can be overidden to implement field specific validation"""
+        return
 
     def is_unique(self):
         return self._unique
@@ -154,8 +174,20 @@ class _Field():
         return self._mutable
 
     @property
-    def python_type(self):
-        return self._python_type
+    def model(self):
+        return self._model
+
+    @model.setter
+    def model(self, value):
+        if not self._model:
+            self._model = value
+        else:
+            raise AttributeError("Cannot change the model attribute of {cls} once set".format(
+                cls=self.__class__.__name__)) from None
+
+    @classmethod
+    def python_type(cls_):
+        return cls_._python_type
 
     @property
     def name(self):
@@ -164,7 +196,7 @@ class _Field():
             Used as the db_column attribute if not set separately
             Can only be set once.
         """
-        return self._name
+        return self._name if self._name else ''
 
     @name.setter
     def name(self, value):
@@ -190,10 +222,9 @@ class _Field():
         """The default value for this field - set in the database, and the initial value of  the attribute"""
         return self._default
 
-    def validate_value(self, value):
-        """Rauses no exception if the value is valid for this field
-         """
-        return
+    @property
+    def callable_default(self):
+        return self._default_callable
 
     def convert_type(self, value, new_type):
         """Can be overriden by sub-class to allow coercion of one type to another
@@ -201,8 +232,8 @@ class _Field():
             Returns the coerced value if it can be coerced
             Raises FieldCoercionException if coercion is not allowed.
         """
-        if not isinstance(value, new_type):
-            raise pyOrmFieldCoercionError
+        if not isinstance(value, (new_type,)):
+            raise exceptions.pyOrmFieldCoercionError
 
         return value
 
@@ -227,16 +258,15 @@ class _Mapping(_Field):
         return self._to_field
 
 class AutoField(_Field):
-    def __init__(self, *args, **kwargs):
+    _python_type = int
+    def __init__(self, *args,  **kwargs):
         if 'default' in kwargs:
             raise AttributeError('Cannot set default value for Autofield')
-        super(AutoField, self).__init__(*args, python_type=int, primary=True, unique=True, null=False, mutable=False, default=0,**kwargs)
 
-    def _check_value(self, new_value, old_value=None, skip_choices_check=False, skip_null_check=False):
-        if old_value is not None:
-            raise ValueError("Cannot change the value of AutoField '{n}' once set".format(n=self.name))
-        else:
-            return super(AutoField, self)._check_value(new_value, old_value, skip_choices_check=True)
+        if kwargs.get('mutable', False):
+            raise AttributeError('Cannot change mutability of Autofield')
+
+        super(AutoField, self).__init__(*args, primary=True, unique=True, null=False, mutable=False, default=0,**kwargs)
 
     def _full_repr(self, value):
         return str(value)
@@ -250,9 +280,7 @@ class AutoField(_Field):
     def _sql_type(self):
         return "INTEGER"
 
-#TODO - Simplify the ModelMetaClass - if _Field are descriptiors than don't need to translate class variables into instance attributes or try to STore their db details.
 
-#TODO - Move validation from Model instantiation into descriptor instantiation - only thing Model needs to do is provide access to any meta info and set the name fields
 class _ModelMetaClass(type):
     """Meta class for any Model instance
 
@@ -265,6 +293,11 @@ class _ModelMetaClass(type):
     """
 
     _models = {}
+
+
+    @classmethod
+    def __prepare__(metacls, name, bases, **kwds):
+        return collections.OrderedDict()
 
     def __new__(mcs, cls_name, bases, cls_dict):
         """A meta class for customised creation of all Model subclasses
@@ -281,59 +314,87 @@ class _ModelMetaClass(type):
         """
         # Invoked when a new class is defined - i.e. when a class is compiled
 
+        # Uses OrderedDict for field name lists so that error messages can be in field order
+
         # Only do the complex stuff when doing subclasses of Model
         # Enables the models to just sub-class Model (without worrying about metaclass)
-
+        # No Special treatment for the Model class itself
         if cls_name == "Model":
-            return type.__new__(mcs, cls_name, bases, cls_dict)
+            return type.__new__(mcs, cls_name, bases, dict(cls_dict))
 
+        #ToDo - need to look for inheritance - and Meta internal classes
+
+        # Build the new class object for this model.
+        cls = type.__new__(mcs, cls_name, bases, dict(cls_dict))
 
         # Auto create the class attributes that the model needs - includes :
         # metadata for the various fields
         # class attributes for db_path, table_name and model name
         # shadow attributes for primary field and dependencies
 
-
         # Class attributes for the __db_path__, __table__ and __name__
-        cls_dict["__db_path__"] = cls_dict.get("__db_path__", os.path.join(os.getcwd(), "sql.db"))
-        cls_dict["__table__"] = cls_dict.get("__table__", cls_name)
-        cls_dict["__name__"] = cls_name
-
+        cls._table_name = cls_dict.get("_table", cls_name)
 
         # Extract the class attributes which are _Field instances
-        meta = cls_dict["_db_fields"] = dict([(k, v) for k, v in cls_dict.iteritems()
-                                              if (not k.startswith("_")) and isinstance(v, _Field)])
+        fields = collections.OrderedDict([(k, cls_dict[k]) for k in cls_dict
+                                              if (not k.startswith("_")) and isinstance(cls_dict[k], _Field)])
 
         # Set the name field, based on the attribute name, and validate that the field is legal.
-        for field_name, field in meta.items():
+        for field_name, field in fields.items():
             field.name = field_name
-            field._attributes_valid()
+            field.model = cls
+
+        # ToDO Record the parent Model of each field. Record aliases
+
+        # Extract the class attributes which are _Field instances
+        managers = collections.OrderedDict([(k, v) for k, v in cls_dict.items()
+                                              if (not k.startswith("_")) and isinstance(v, Manager)])
+
+        # Set the name field, based on the attribute name.
+        for manager_name, manager_inst in managers.items():
+            if not manager_inst.name:
+                manager_inst.name = manager_name
+
+        if not managers:
+            if 'objects' in fields:
+                raise exceptions.ManagerCreationError('Invalid Model definition: can\'t create default \'objects\' manager')
+
+            managers['objects'] = Manager(name='objects', model=cls)
+            cls.objects = managers['objects']
 
         # Find any primary keys which are already defined
-        primaries = [name for name, field in meta.items() if field.is_primary() ]
+        primaries = [(name, field) for name, field in fields.items() if field.is_primary() ]
+
         if not primaries:
             # No primary fields defined - so we will automatically define one - assuming no name clashes
             if "id" in cls_dict:
-                raise ValueError("id field exists but is not the primary key")
+                raise exceptions.PrimaryKeyError("Primary Key Error: \'id\' field exists but is not the primary key")
             else:
                 pass
-                meta["id"] = AutoField()
-                meta["id"].name = "id"
-                cls_dict["_primary"] = mcs.meta["id"]
+                fields["id"] = AutoField()
+                fields["id"].name = "id"
+                fields["id"].model = cls
+                cls.id = fields['id']
+                cls._primary = fields["id"]
         else:
             if len(primaries) == 1:
-                cls_dict["_primary"] = primaries[0]
+                cls._primary = primaries[0][1]
             else:
-                raise ValueError("More than one primary field ({names}) defined in this Model".format(
-                    names = ",".join(primaries)
+                raise exceptions.PrimaryKeyError("Primary Key Error: More than one primary field ({names}) defined in this Model".format(
+                    names = ",".join('\''+f[0]+'\'' for f in primaries)
                 ))
 
         #Find dependencies (i.e.tables that this maps to)
-        cls_dict["_dependencies"] = [field.othermodel() for field in meta
+        cls._dependencies = [field.othermodel() for field_name, field in fields.items()
                                      if isinstance(field,_Mapping)]
 
         # Create a mapping from the db_column name to the actual field - used on queries.
-        cls_dict["_columns_to_attr"] = {field.db_column():field for field in meta}
+        cls._columns_to_attr = {field.db_column:field  for field_name, field in fields.items()}
 
-        _ModelMetaClass._models[cls_name] = type.__new__(mcs, cls_name, bases, cls_dict)
+        cls._db_fields = fields
+        cls._managers = managers
+
+         # keep a class based list of all the models we have created.
+        _ModelMetaClass._models[cls_name] = cls
+
         return _ModelMetaClass._models[cls_name]
