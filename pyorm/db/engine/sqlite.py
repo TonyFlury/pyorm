@@ -171,6 +171,7 @@ def startswith(field_name, value ):
 #
 #-----------------------------------------------------------------
 class Adapter:
+    """Base adapter class"""
     def __init__(self, python_type):
         self._python_type = python_type
 

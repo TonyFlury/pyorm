@@ -109,7 +109,7 @@ class EngineCore(metaclass=ABCMeta):
         raise NotImplemented
 
     @abstractmethod
-    def get_connection(self, path):
+    def get_connection(self):
         raise NotImplemented
 
     def connect(self):
