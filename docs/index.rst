@@ -25,6 +25,8 @@ In summary an application using pyORM will have :
   - Instances of model classes which can be created, changed, saved and deleted
   - Relationships between models by specifying certain _fields which are mappings to other _fields on other models.
 
+Ready to :doc:``get started <GettingStarted>`` ?
+
 These constructs are :doc:`directly related to constructs with the rdbms <relationship to RDMS and SQL>`, but in the majority of cases your application wont need to be concerned with the details of structure of your database, as pyORM deals with all of those datails.
 
 .. note::

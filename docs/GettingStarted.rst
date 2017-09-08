@@ -2,6 +2,7 @@
 Getting Started
 ===============
 
+Start here if you have never used pyorm - or you need a referesher. If you are familiar with pyorm, then
 
 Your first pyorm Application
 ============================
