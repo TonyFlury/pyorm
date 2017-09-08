@@ -14,7 +14,7 @@ Testable Statements :
 """
 from unittest.mock import MagicMock
 
-from pyorm.db.engine._core import EngineCore
+from pyorm.db.engine.core import EngineCore
 from pyorm.db.models._core import _Field
 
 __version__ = "0.1"

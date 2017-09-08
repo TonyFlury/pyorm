@@ -46,7 +46,6 @@ class Lazy:
         return hash(str(self))
 
 
-
 class Annotation(Lazy):
     """A class for adding other classes to a query set - aggregates etc"""
     pass

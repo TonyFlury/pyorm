@@ -83,6 +83,10 @@ class MultipleObjects(QuerySetError):
     """Public API exception when Two many rows/objects are fetched"""
     pass
 
+class JoinError(QuerySetError):
+    """Public API exception when there is an error creating a join"""
+    pass
+
 class LimitsError(QuerySetError):
     """Public API exception when there is an error in the Limits value"""
     pass

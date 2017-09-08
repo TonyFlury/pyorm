@@ -8,10 +8,11 @@ pyORM: Flexible Django like Python ORM
 
     Installation
     GettingStarted
-    models
-    _fields
+    Models
+    Fields
     relations to RDBMS and SQL
     testing
+    Extending pyorm/index
     glossary
 
 pyORM is a Object Relationship Manager library which is heavily inspired by Django models. The aim of pyORM is to provide an

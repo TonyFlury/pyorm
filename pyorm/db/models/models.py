@@ -56,6 +56,8 @@ class Model( metaclass=_ModelMetaClass):
 
     def __setattr__(self, key, value):
 
+        # Todo Needs to be changed for a manager field
+
         field = self.db_field_by_name(key)
 
         if not field:
@@ -116,30 +118,16 @@ class Model( metaclass=_ModelMetaClass):
             if cls_.db_field_by_name(name=name) is None:
                 raise AttributeError('Unknown field name: \'{}\' is not a field on \'{}\' model'.format(name, cls_.__name__))
 
-
-    # Todo - detach get/get_or_create from database
-
-    @classmethod
-    def get(cls_,**kwargs):
-        """Get a single object using the engine.get method"""
-        try:
-            cls_._check_field_names(name for name in kwargs.keys())
-        except AttributeError:
-            raise
-
-        if len(kwargs) != 1:
-            raise AttributeError('Incorrect arguments to \'get\': need only one field/value argument pair.') from None
-        data = engine.get(model=cls_, **kwargs)
-        attrs = cls_._db_data_to_model_attrs(db_data=data)
-        return cls_(**attrs)
-
-    @classmethod
-    def get_or_create(cls_,**kwargs):
-        try:
-            return cls_.get(**kwargs)
-        except exceptions.DoesNotExist:
-            return cls_()
-
     @classmethod
     def table_name(cls):
         return cls._table_name
+
+    @classmethod
+    def get_relationshup(cls, manager_name):
+        """Finds the named manager, returns a 3-tuple
+
+           [0] The related model(s) in this manager
+           [1] The field on this model
+           [2] The field on the related model
+        """
+        pass

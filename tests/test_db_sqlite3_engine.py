@@ -393,8 +393,8 @@ class DateTrunc(unittest.TestCase):
     def setUp(self):
         self.engine = Engine(':memory:')
         self.connection = self.engine.connect()
-        self.connection.execute('CREATE TABLE IF NOT EXISTS test (d date, ts timestamp)')
-        self.connection.executemany('INSERT INTO test(d, ts) VALUES (?,?)',[
+        self.connection.execute('CREATE TABLE IF NOT EXISTS test (d date, ts timestamp);')
+        self.connection.executemany('INSERT INTO test(d, ts) VALUES (?,?);',[
                                     (datetime.date(2012,11,19), datetime.datetime(2017,6,13, 13,34,9,320)),
                                     (datetime.date(2012,11,19), datetime.datetime(2017,6,13, 13,24,11)),
                                     (datetime.date(2011,12,15), datetime.datetime(2017,8,9, 9,5,0,11)),
@@ -407,55 +407,55 @@ class DateTrunc(unittest.TestCase):
         self.connection.close()
 
     def test_410_500_TruncYear_Dates(self):
-        cur = self.connection.execute('SELECT DISTINCT Truncyear(d) as d from TEST')
+        cur = self.connection.execute('SELECT DISTINCT TruncYear(d) as d from TEST;')
         years = [r['d'] for r in cur.fetchall()]
         self.assertEqual(len(years), 5)
         self.assertCountEqual(years,[('2012-1-1'),('2011-1-1'),('2010-1-1'),('2009-1-1'),(None)])
 
     def test_410_501_TruncYear_Datetimes(self):
-        cur = self.connection.execute('SELECT DISTINCT Truncyear(ts) as ts from TEST')
+        cur = self.connection.execute('SELECT DISTINCT TruncYear(ts) as ts from TEST')
         years = [r['ts'] for r in cur.fetchall()]
         self.assertEqual(len(years), 4)
         self.assertCountEqual(years,[('2017-1-1'),('2016-1-1'),('2015-1-1'),(None)])
 
     def test_410_510_TruncMonth_Dates(self):
-        cur = self.connection.execute('SELECT DISTINCT Truncmonth(d) as d from TEST')
+        cur = self.connection.execute('SELECT DISTINCT TruncMonth(d) as d from TEST')
         years = [r['d'] for r in cur.fetchall()]
         self.assertEqual(len(years), 5)
         self.assertCountEqual(years,[('2012-11-1'),('2011-12-1'),('2010-09-1'),('2009-05-1'),(None)])
 
     def test_410_511_TruncMonth_Datetimes(self):
-        cur = self.connection.execute('SELECT DISTINCT Truncmonth(ts) as ts from TEST')
+        cur = self.connection.execute('SELECT DISTINCT TruncMonth(ts) as ts from TEST')
         years = [r['ts'] for r in cur.fetchall()]
         self.assertEqual(len(years), 5)
         self.assertCountEqual(years,[('2017-06-1'),('2017-08-1'),('2016-11-1'),('2015-11-1'),(None)])
 
     def test_410_520_TruncDay_Dates(self):
-        cur = self.connection.execute('SELECT DISTINCT Truncday(d) as d from TEST')
+        cur = self.connection.execute('SELECT DISTINCT TruncDay(d) as d from TEST')
         years = [r['d'] for r in cur.fetchall()]
         self.assertEqual(len(years), 5)
         self.assertCountEqual(years,[('2012-11-19'),('2011-12-15'),('2010-09-17'),('2009-05-13'),(None)])
 
     def test_410_521_TruncDay_Datetimes(self):
-        cur = self.connection.execute('SELECT DISTINCT Truncday(ts) as ts from TEST')
+        cur = self.connection.execute('SELECT DISTINCT TruncDay(ts) as ts from TEST')
         years = [r['ts'] for r in cur.fetchall()]
         self.assertEqual(len(years), 5)
         self.assertCountEqual(years,[('2017-06-13'),('2017-08-09'),('2016-11-05'),('2015-11-05'),(None)])
 
     def test_410_531_TruncHour_Datetimes(self):
-        cur = self.connection.execute('SELECT DISTINCT Trunchour(ts) as ts from TEST')
+        cur = self.connection.execute('SELECT DISTINCT TruncHour(ts) as ts from TEST')
         years = [r['ts'] for r in cur.fetchall()]
         self.assertEqual(len(years), 5)
         self.assertCountEqual(years,[('2017-06-13 13:00:00'),('2017-08-09 09:00:00'),('2016-11-05 22:00:00'),('2015-11-05 22:00:00'),(None)])
 
     def test_410_541_Truncminutes_Datetimes(self):
-        cur = self.connection.execute('SELECT DISTINCT Truncminutes(ts) as ts from TEST')
+        cur = self.connection.execute('SELECT DISTINCT TruncMinutes(ts) as ts from TEST')
         years = [r['ts'] for r in cur.fetchall()]
         self.assertEqual(len(years), 6)
         self.assertCountEqual(years,[('2017-06-13 13:34:00'),('2017-06-13 13:24:00'),('2017-08-09 09:05:00'),('2016-11-05 22:55:00'),('2015-11-05 22:55:00'),(None)])
 
     def test_410_541_Truncseconds_Datetimes(self):
-        cur = self.connection.execute('SELECT DISTINCT Truncseconds(ts) as ts from TEST')
+        cur = self.connection.execute('SELECT DISTINCT TruncSeconds(ts) as ts from TEST')
         years = [r['ts'] for r in cur.fetchall()]
         self.assertEqual(len(years), 6)
         self.assertCountEqual(years,[('2017-06-13 13:34:09'),('2017-06-13 13:24:11'),('2017-08-09 09:05:00'),('2016-11-05 22:55:59'),('2015-11-05 22:55:59'),(None)])

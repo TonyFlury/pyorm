@@ -170,3 +170,8 @@ class EngineCore(metaclass=ABCMeta):
         """Create the appropriate sql fragement for this field in a select statement"""
         raise NotImplemented('\"select_field\" must be implemented on subclass')
 
+    def resolve_name(self, name, model=None, joins=None):
+        pass
+
+    def resolve_lookup(self, name, value, model=None, joins=None):
+        pass

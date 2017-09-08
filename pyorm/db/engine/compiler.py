@@ -21,16 +21,6 @@ __created__ = '31 Aug 2017'
 
 LOOKUP_SEP = '__'
 
-def RegisterLookUp(compiler_class, lookup_name):
-    def outer_wrapper( func ):
-        @wraps(func)
-        def inner_wrapper( field_name,value):
-            return func(field_name,value)
-
-        compiler_class.register_lookup(lookup_name, inner_wrapper)
-        return inner_wrapper
-    return outer_wrapper
-
 class Compiler:
     _lookups = {}
 
@@ -38,9 +28,6 @@ class Compiler:
         self._engine = engine
         self._obj = obj
 
-    @classmethod
-    def register_lookup(cls, name, func):
-        cls._lookups[name] = func
 
     def lookup(self, lookup, value):
         parts = lookup.split(LOOKUP_SEP)

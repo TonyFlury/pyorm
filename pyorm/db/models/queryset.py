@@ -13,6 +13,8 @@ Testable Statements :
     ....
 """
 from copy import copy
+from collections import OrderedDict
+
 import pyorm.core.exceptions as exceptions
 from .utils import Annotation, Related
 from .functions import TruncDate
@@ -27,95 +29,150 @@ __created__ = '26 Aug 2017'
 # Todo - Must be able to pickle everything
 
 
-def magic_method_wrapper(operator, name):
-    """Wrapper Used to add magic Methods to the CombinedExp class"""
-
-    def __method__(self, other):
-        return CombinedExp(lhs=self, operator=operator, rhs=other)
-
-    __method__.__name__ = name
-    return __method__
-
-
-def add_operators(cls):
-    """Decorator to add appropriate operator magic methods"""
-    ops = {'+': ('__add__', '__radd__'),
-           '-': {'__sub__', '__rsub'},
-           '*': ('__mul__', '__rmul__'),
-           '/': {'__truediv__', '__rtruediv__'},
-           '<<': {'__lshift__', '__rlshift__'},
-           '>>': {'__rshift__', '__rrshift__'},
-           '^': {'__xor__', '__rxor__'},
-           '&': {'__and__', '__rand__'},
-           '|': {'__or__', '__ror__'},
-           '%': {'__mod__', '__rmod__'}
-           }
-    for op, names in ops.items():
-        for name in names:
-            setattr(cls, name, magic_method_wrapper(op, name))
-    return cls
-
-
-@add_operators
 class F:
     """A Deferred field access - accesses the field at execution time not against the Python Model"""
     def __init__(self, field_name):
         """General class to defer field lookup until query is executed
 
-          Can be arithmetically combined with aother
+          Can be arithmetically combined with another F object or strings
         """
-        self._field_name = field_name
-        self._negate = False
+        if field_name:
+            self._lhs = field_name
+            self._rhs = None
+            self._operator = None
+            self._negate = False
+
+    @classmethod
+    def CreateCombine(self, lhs=None, operator=None, rhs=None):
+        """Create a combined instance"""
+        c = F(lhs)
+        c._rhs = rhs
+        c._operator = operator
+        return c
 
     def __eq__(self, other):
-        return repr(self) == repr(other)
+        if not isinstance(other, F):
+            return False
+
+        return self._lhs == other._lhs \
+               and self._rhs == other._rhs \
+               and self._operator == other._operator \
+               and self._negate == other._negate
 
     def __hash__(self):
         return hash((repr(self)))
 
     def __repr__(self):
-        return '{}({})'.format(self.__class__.__name__, repr(self._field_name))
-
-    def __neg__(self):
-        self._negate = not self._negate
-        return self
-
-    def __pos__(self):
-        self._negate = False
-        return self
-
-
-class CombinedExp(F):
-    """An Expression for F objects
-
-    A binary operator where at least one operand is an F object
-
-    Relies on Python identifying operator precedence.
-
-    With Complex operations this will form an effective tree of objects
-
-    Object will have no knowledge of where it is in the tree
-    """
-    def __init__(self, lhs, operator, rhs):
-        super().__init__('')
-        self._lhs = lhs
-        self._operator = operator
-        self._rhs = rhs
-        self._negate = False
-
-    def __repr__(self):
         # Repr uses () to designate the prioritisation
         # If Python builds this CombineExp first then it has the precedence
         # (either due to operator precedence or due to bracketting.
-        return '{}({!r}{}{!r})'.format('-' if self._negate else '', self._lhs,
+        if self._operator:
+            return '{}({!r}{}{!r})'.format('-' if self._negate else '',
+                                       self._lhs,
                                        self._operator, self._rhs)
 
-    def __hash__(self):
-        return hash(repr(self))
+        else:
+            return '{}{}({})'.format('~' if self._negate else '', self.__class__.__name__, repr(self._lhs))
 
-    def __eq__(self, other):
-        return repr(self) == repr(other)
+    def __neg__(self):
+        clone = copy(self)
+        clone._negate = not self._negate
+        return clone
 
+    def __pos__(self):
+        clone = copy(self)
+        clone._negate = False
+        return clone
+
+    def __concat__(self, other):
+        return self.CreateCombine(lhs=self, operator='+', rhs=other)
+
+    def __rconcat__(self, other):
+        return self.CreateCombine(lhs=other, operator='+', rhs=self)
+
+    def __add__(self, other):
+        return self.CreateCombine(lhs=self, operator='+', rhs=other)
+
+    def __radd__(self, other):
+        return self.CreateCombine(lhs=other, operator='+', rhs=self)
+
+    def __sub__(self, other):
+        return self.CreateCombine(lhs=self, operator='-', rhs=other)
+
+    def __rsub__(self, other):
+        return self.CreateCombine(lhs=self, operator='-', rhs=other)
+
+    def __mul__(self, other):
+        return self.CreateCombine(lhs=self, operator='*', rhs=other)
+
+    def __rmul__(self, other):
+        return self.CreateCombine(lhs=self, operator='*', rhs=other)
+
+    def __truediv__(self, other):
+        return self.CreateCombine(lhs=self, operator='/', rhs=other)
+
+    def __rtruediv__(self, other):
+        return self.CreateCombine(lhs=self, operator='/', rhs=other)
+
+    def __lshift__(self, other):
+        return self.CreateCombine(lhs=self, operator='<<', rhs=other)
+
+    def __rlshift__(self, other):
+        return self.CreateCombine(lhs=self, operator='<<', rhs=other)
+
+    def __rshift__(self, other):
+        return self.CreateCombine(lhs=self, operator='>>', rhs=other)
+
+    def __rrshift__(self, other):
+        return self.CreateCombine(lhs=self, operator='>>', rhs=other)
+
+    def __and__(self, other):
+        return self.CreateCombine(lhs=self, operator='&', rhs=other)
+
+    def __rand__(self, other):
+        return self.CreateCombine(lhs=self, operator='&', rhs=other)
+
+    def __or__(self, other):
+        return self.CreateCombine(lhs=self, operator='|', rhs=other)
+
+    def __ror__(self, other):
+        return self.CreateCombine(lhs=self, operator='|', rhs=other)
+
+    def __xor__(self, other):
+        return self.CreateCombine(lhs=self, operator='^', rhs=other)
+
+    def __rxor__(self, other):
+        return self.CreateCombine(lhs=self, operator='^', rhs=other)
+
+    def __mod__(self, other):
+        return self.CreateCombine(lhs=self, operator='%', rhs=other)
+
+    def __rmod__(self, other):
+        return self.CreateCombine(lhs=self, operator='%', rhs=other)
+
+    def resolve(self, default_alias = '',engine=None, model=None, joins=None):
+        """Public method to validate an F object"""
+
+        # If the operator and rhs elements are Non then the lhs will be field name
+        # other wise one of the fields will be an F object and the other an F object or constant.
+        if self._operator and self._rhs:
+            try:
+                lhs = self._lhs.resolve(default_alias = default_alias, engine=engine, model=model, joins=joins)
+            except AttributeError:
+                lhs = repr(self._lhs)
+            except:
+                raise
+
+            try:
+                rhs = self._rhs.resolve(default_alias = default_alias, engine=engine, model=model, joins=joins)
+            except AttributeError:
+                rhs = repr(self._rhs)
+            except:
+                raise
+
+            return '(' + lhs + self._operator + rhs + ')'
+        else:
+            return engine.resolve_name(self._lhs, default_alias=default_alias, model=model, joins=joins)
 
 class Q:
     """A class for building complex field comparisons, especially when wants to use OR combinations"""
@@ -129,12 +186,13 @@ class Q:
         self._members = []
 
         # Any kwargs will be field lookups - and nothing else
+        # Build the membership dictionary in alphabetical order
         if kwargs:
             lk = sorted([k for k in kwargs])
             self._operator = 'AND'
-            self._members = ['{}={}'.format(k, repr(kwargs[k])) for k in lk]
+            self._members = [(k,kwargs[k]) for k in lk]
         else:
-            self._member = []
+            self._members = []
             self._operator = None
         self._negated = False
 
@@ -142,7 +200,7 @@ class Q:
     def __and__(self, other):
         if not isinstance(other, self.__class__):
             raise exceptions.QuerySetError(
-                'Cannot combine Q expression with anything else')
+                'Cannot CreateCombine Q expression with anything else')
         q = self.__class__()
         # Doing an & with an empty Q is a simple copy
         if self._members and other._members:
@@ -157,7 +215,7 @@ class Q:
     def __or__(self, other):
         if not isinstance(other, self.__class__):
             raise exceptions.QuerySetError(
-                'Cannot combine Q expression with anything else')
+                'Cannot CreateCombine Q expression with anything else')
         q = self.__class__()
 
         # Doing an | with an empty Q is a simple copy
@@ -174,8 +232,11 @@ class Q:
         self._operator = operator
 
     def __invert__(self):
-        self._negated = not self._negated
-        return self
+        q = self.__class__()
+        q._members = self._members
+        q._negated = not self._negated
+        q._operator = self._operator
+        return q
 
     def __repr__(self):
         if self._members:
@@ -184,7 +245,7 @@ class Q:
                 neg=('NOT ' if self._negated else ''),
                 op=self._operator,
                 members=', '.join(
-                    repr(x) if not isinstance(x, str) else x for x in
+                    repr(term) if not isinstance(term, tuple) else term[0]+'='+repr(term[1]) for term in
                     self._members)
             )
         else:
@@ -192,9 +253,26 @@ class Q:
 
     def __eq__(self, other):
         if not isinstance(other, self.__class__):
-            raise NotImplemented
-        return repr(self) == repr(other)
+            raise NotImplementedError
+        return self._members == other._members and self._operator == other._operator and self._negated == other._negated
 
+    def __hash__(self):
+        return hash(repr(self))
+
+    def resolve(self, default_alias = '', engine=None, model=None, joins=None):
+
+        fs = []
+        for member in self._members:
+            try:
+                fs.append( member.resolve( default_alias = default_alias, engine=engine, model=model, joins=joins))
+            except AttributeError:
+                fs.append( engine.resolve_lookup(*member,default_alias = default_alias, model=model,joins=joins))
+            except:
+                raise
+
+        return '{negated}({fields})'.format(
+                                negated='NOT ' if self._negated else '',
+                                fields = (' ' +self._operator+' ').join(fs) )
 
 class BaseQuery:
     """Common class for ALL queries
@@ -236,7 +314,10 @@ class BaseQuery:
 
 
 class OrderingAndLimits(BaseQuery):
-    """ A Base class for any query which can be ordered and limited """
+    """ A Base class for any query which can be ordered and limited
+
+        The base for the SimpleQuery and Combination query types
+    """
     def __init__(self, order_by=None, limits=None, filterable=True,
                  extendable=True, limitable=True):
         super().__init__(orderable=True, limitable=limitable, filterable=filterable,
@@ -269,11 +350,11 @@ class OrderingAndLimits(BaseQuery):
         """Expose the order by list"""
         return self._order_by
 
-    def add_limits(self, *limits):
-        """Add a limits to the limit list"""
-        if len(limits) > 2:
+    def set_limits(self, *limits):
+        """Set the limits"""
+        if len(limits) >2:
             raise exceptions.LimitsError
-        self._limits += [*limits]
+        self._limits = [*limits]
 
     def clear_limits(self):
         """Clear the limit list"""
@@ -295,7 +376,7 @@ class FilterableQuery(OrderingAndLimits):
         super().__init__(filterable=True, limitable=limitable, order_by=order_by)
         if criteria:
             assert isinstance(criteria, Q)
-        self._criteria = criteria
+        self._criteria = criteria if criteria else Q()
 
     @property
     def criteria(self):
@@ -306,7 +387,6 @@ class FilterableQuery(OrderingAndLimits):
     def criteria(self, value):
         """Expose the criteria attribute to be set"""
         self._criteria = value
-
 
 class RawSQL(BaseQuery):
     """A Special Query object which is defined by SQL only - so immutable"""
@@ -324,64 +404,323 @@ class Combination(OrderingAndLimits):
     """A Generic class for Queries which are compound Queries"""
     def __init__(self, *qs, order_by=None):
         super().__init__(order_by, filterable=False, extendable=False)
-        self._qs = qs
+        self._qs = [*qs] if qs else []
+
+    @property
+    def queries(self):
+        return self._qs
 
 
 class Union(Combination):
     """A class for recording a UNION query"""
     def __init__(self, *qs, order_by=None, get_all=False):
-        super().__init__(*qs, order_by)
+        super().__init__(*qs, order_by=order_by)
         self._get_all = get_all
 
+    @property
+    def get_all(self):
+        return self._get_all
 
 class Intersection(Combination):
     """A class for recording an INTERSECT query"""
     def __init__(self, *qs, order_by=None):
-        super().__init__(*qs, order_by)
+        super().__init__(*qs, order_by=order_by)
 
 
 class Difference(Combination):
     """A class for recording an EXCEPT query"""
     def __init__(self, *qs, order_by=None):
-        super().__init__(*qs, order_by)
+        super().__init__(*qs, order_by=order_by)
+
+class Join:
+    """Class for Join information - holds a tree of join Nodes"""
+    class Node:
+        """A class defining the linkage between a model and it's parent
+
+          Each Node defines how a given relation connects a model to the parent
+        """
+        def __init__(self, parent=None, relation_name='', model=None, fields=(), allow_nulls=False):
+            """Build a node, which defines the relationship between two models
+
+            :param parent: The parent node of this join node
+            :param relation_name: The name of the relation from the parent model
+            :param model: The model that this node relates to
+            :param fields:  The fields that define this relationship
+                            a 2-tuple : (parent field, child_field)
+            :param allow_nulls: Whether this side of the relationship can be null.
+
+            Example:
+
+            With two models A & B forms a relationship named 'foo' where the two
+            models are connected by the criteria A.foo_bar = B.bar_foo
+
+            parent = the Node that defines A
+            relation_name = 'foo'
+            model = B
+            fields = ('foo_bar', 'bar_foo')
+            allow_nulls = True if entries from model B can be omitted
+            """
+            self._model = model
+            self._parent = parent
+            self._relation = relation_name
+            self._fields = fields
+            self._children = OrderedDict()
+            self._allow_nulls = allow_nulls
+
+        def __repr__(self):
+            if self._parent:
+                return 'Join {alias}: {parentTable} => {table} {parentTable}.{parent_field}={table}.{table_field}'.format(
+                        alias = self.relation,
+                        parentTable = self._parent.model.table_name(),
+                        table = self._model.table_name(),
+                        parent_field = self._fields[0],
+                        table_field = self._fields[1]
+                        )
+            else:
+                return '{alias}: {table}'.format(
+                        alias = self.relation,
+                        table = self._model.table_name(),
+                        )
+
+        def __hash__(self):
+            return hash(repr(self))
+
+        def __eq__(self, other):
+            return repr(self) == repr(other)
+
+        @property
+        def allow_nulls(self):
+            return self._allow_nulls
+
+        @property
+        def parent(self):
+            """The parent node of this node - could be None"""
+            return self._parent
+
+        @property
+        def model(self):
+            """The mode for this node - i.e. the rhs of the relationship"""
+            return self._model
+
+        @property
+        def relation(self):
+            """The name of the relationship - this will be a relation on the parent model"""
+            return self._relation
+
+        @relation.setter
+        def relation(self, value):
+            """Allow setting of the relation name"""
+            self._relation = value
+
+        @property
+        def fields(self):
+            """The fields that define the connection between the two models"""
+            return self._fields
+
+        @property
+        def children(self):
+            """The child nodes of this model/relation"""
+            return self._children
+
+    def __init__(self, root_model=None, sep='__'):
+        """Create an initial Join onto a single table"""
+        self._root = self.Node(parent=None, relation_name='', model=root_model, fields=())
+        self._sep = sep
+        self._index = {}
+
+    def from_tuple(self, joins):
+        """Build a simple set of joins based a provided set of tuples
+
+          Provides a way to create joins which aren't dependent on existing relations
+
+         :param joins: an interable of tuples
+                The tuples 5-tuples:
+                (Model class, alias str, parent alias, field name on parent, field name on model, allow_nulls)
+        """
+        if self._root.children:
+            raise exceptions.JoinError('Cannot use from_tuple to add to existing joins')
+
+        if not self._root.relation:
+            self._root.relation = self._root.model.table_name()
+            self._root._relation_path = [self._root.model.table_name()]
+
+        for a_join in joins:
+            try:
+                model,alias,parent_alias,parent_field,field_name,allow_nulls = a_join
+            except ValueError:
+                raise exceptions.JoinError('Unexpected format of tuple - expecting 6 elements')
+
+            parent_node = self._find_relation(parent_alias)
+            if not parent_node:
+                if not (parent_alias == self._root.relation):
+                    raise exceptions.JoinError('Parent alias \'{}\' does not exist'.format(parent_alias))
+                else:
+                    parent_node = self._root
+
+            node = self.Node(parent=parent_node, relation_name=alias,
+                             model=model,
+                             fields=(parent_field, field_name),
+                             allow_nulls=allow_nulls)
+            parent_node.children[alias] = node
+            self._index[alias] = node
+
+
+    def _find_deepest_parent(self, full_relation_name):
+        """Find the deepest existing parent for this  given relation name within the current node tree
+
+        :param full_relation_name
+        :return: Either the Node
+        """
+        parent_name = self._sep.join(full_relation_name.split(self._sep)[:-1])
+        while parent_name and not self._index.get(parent_name, None):
+            parent_name = self._sep.join(parent_name.split(self._sep)[:-1])
+
+        return self._index[parent_name] if parent_name else self._root
+
+    def _find_relation(self, full_relation_name):
+        """Find a given relation name within the current node tree
+
+        :param full_relation_name: The name with components separated by '__'
+        :return: Either the Node or None
+        """
+        return self._index.get(full_relation_name,None)
+
+    def _addNode_to_parent(self, element='', parent=None, allow_nulls=False):
+        """Add a node to the Parent node
+
+        :param element: The relevant component of the relation name
+        :param parent: The parent node
+        :return:
+
+        Creates an Node instance, adds it to the children of the parent
+        and add the full path to the index
+
+        """
+        relation_info = parent.model.get_relationship(element)
+        related_model, field, related_field = relation_info
+        node = self.Node(parent=parent, relation_name=parent.relation + self._sep + element,
+                         model=related_model,
+                         fields=(field, related_field),
+                         allow_nulls=allow_nulls)
+        parent.children[element] = node
+        self._index[parent.relation + self._sep + element] = node
+        return node
+
+    def _create_path(self, relation_name, allow_nulls=False):
+        """Create a path to the relation_name building nodes as we go"""
+
+        # Find the deepest parent node for this relation
+        parent = self._find_deepest_parent(relation_name)
+
+        # Identify what is missing
+        remaining_elements = relation_name.split(self._sep)[len(parent._relation_path) - 1:]
+
+        # Build out what is missing, if anything
+        if remaining_elements:
+            for element in remaining_elements:
+                node = self._addNode_to_parent(element=element, parent=parent, allow_nulls=allow_nulls)
+                parent = node
+            return node
+        else:
+            return parent
+
+    def addJoin(self, model_path, allow_nulls=False):
+        """Public method to add a join - based on a relation to the initial model"""
+        if not self._root.relation:
+            self._root.relation = self._root.model.table_name()
+            self._root._relation_path = [self._root.model.table_name()]
+
+        node = self._find_relation(model_path)
+        if not node:
+            return self._create_path(model_path,allow_nulls=allow_nulls)
+        else:
+            return node
+
+    def _flatten(self, parent_node=None, sep=None):
+        """Convert the tree into a depth first iteratable"""
+
+        parent_node = parent_node if parent_node else self._root
+        sep = sep if sep else self._sep
+
+        yield (parent_node.relation, parent_node)
+
+        for relation, node in parent_node.children.items():
+            if node._children:
+                yield from self._flatten(parent_node=node, sep=sep)
+            else:
+                yield (node.relation, node)
+        else:
+            return
+
+    def items(self):
+        """Public iterator method"""
+        yield from self._flatten()
+
+    def to_sql(self):
+        """Create """
+        sql = ''
+        for path, node in self._flatten():
+            if not node.parent:
+                sql += "{} {}\n".format(node.model.table_name(),node.relation)
+            else:
+                outer = node._allow_nulls and not node.children
+                sql += 'LEFT {outer} JOIN {table_name} {node.relation} ON {parent.relation}.{fields[0]} = {node.relation}.{fields[1]}\n'.format(
+                    outer='OUTER' if outer else '',
+                    table_name = node.model.table_name(),
+                    node = node,
+                    parent = node.parent,
+                    fields= node.fields)
+
+        return sql
 
 
 class SimpleQuery(FilterableQuery):
     """A simple SQL query - i.e. not a Compound Query or a pre-built SQL Query"""
-    def __init__(self):
+    def __init__(self, options=None, joins=None,fields=None,criteria=None, order_by = None):
         super().__init__()
-        self._options = []
-        self._tables = []
-        self._fields = []
-        self._joins = []
+        self._options = options if options else []
+        self._fields = fields if fields else []
+        self._joins = joins if joins else []
+        self._criteria = criteria if credits else []
+        self.add_order_by(order_by if order_by else [])
 
-    def add_fields_from_model(self, model):
-        """Given an existing model - build a field list for the model"""
-        self.clear_fields()
-        self.add_fields(tuple(
-            definition.db_column for name, definition in model.db_fields()))
+    @property
+    def options(self):
+        return self._options
+
+    @property
+    def fields(self):
+        return self._fields
+
+    @property
+    def joins(self):
+        return self._joins
+
+    @property
+    def criteria(self):
+        return self._criteria
 
     @classmethod
     def from_model(cls, model=None, order_by=None):
         """Class factory method to build a Query Set based on an existing model"""
         if not model:
             return
-        inst = cls()
-        inst.add_table((model.table_name(), model.table_name()))
-        inst.add_fields_from_model(model.db_fields())
-        inst.add_order_by(*order_by if order_by else 'id')
+        inst = cls(joins=[Join(TableInfo(table_name=model, field=model.primary_field(), alias=model.table_name()), None)],
+                   fields =  [definition.db_column for name, definition in model.db_fields()],
+                   order_by = order_by if order_by else model.order_by())
+        return inst
 
     def add_options(self, *options):
         """Add items to the options list"""
         self._options += [*options]
 
-    def add_table(self, *tables):
+    def add_joins(self, *joins):
         """Add tables to the tables list"""
-        self._tables += [*tables]
+        self._joins += [*joins]
 
-    def clear_tables(self):
+    def clear_joins(self):
         """Clear the table list"""
-        self._tables = []
+        self._joins = []
 
     def add_fields(self, *new_fields):
         """Add fields to the fields list"""
@@ -634,7 +973,7 @@ class QuerySet(object):
     #  Methods that don't return a QuerySet
     #
 
-    # ToDo - WHat the hell does this do ????
+
     # noinspection PyMethodMayBeStatic
     def _transform(self, obj):
         """Chnage the output to the relevant output format - model, dict, list, list-flat"""
